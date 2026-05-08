@@ -1,4 +1,4 @@
-name: Auto-Download File
+name: Auto-Download and Update README
 on:
   workflow_dispatch:
     inputs:
@@ -18,20 +18,34 @@ jobs:
 
       - name: Download and Detect Filename
         run: |
-          # Extract filename from URL
           URL="${{ github.event.inputs.file_url }}"
           FILENAME=$(basename "$URL")
-          
           echo "Downloading $FILENAME..."
           curl -L "$URL" -o "$FILENAME"
-          
-          # Save filename for the next step
           echo "FINAL_FILENAME=$FILENAME" >> $GITHUB_ENV
+
+      - name: Update README
+        run: |
+          # Create README if it doesn't exist
+          if [ ! -f README.md ]; then
+            echo "# Downloaded Files Archive" > README.md
+            echo "Below is a list of files downloaded via GitHub Actions:" >> README.md
+            echo "" >> README.md
+            echo "| File Name | Download Link |" >> README.md
+            echo "| --- | --- |" >> README.md
+          fi
+          
+          # Generate the download link (Raw GitHub Link)
+          # Note: Replace 'main' with your branch name if different
+          DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/${{ env.FINAL_FILENAME }}"
+          
+          # Append new entry to the table
+          echo "| ${{ env.FINAL_FILENAME }} | [Download]($DOWNLOAD_LINK) |" >> README.md
 
       - name: Commit and Push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add "${{ env.FINAL_FILENAME }}"
-          git commit -m "Automated download of ${{ env.FINAL_FILENAME }}"
+          git add "${{ env.FINAL_FILENAME }}" README.md
+          git commit -m "Added ${{ env.FINAL_FILENAME }} and updated README"
           git push
