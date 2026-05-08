@@ -1,4 +1,4 @@
-name: File Downloading(M-NRZ)
+name: Conditional Split & Organize
 on:
   workflow_dispatch:
     inputs:
@@ -36,24 +36,36 @@ jobs:
           
           # 1. Process New Downloads
           for URL in $FILE_URLS; do
-            CLEAN_NAME=$(basename "$URL" | cut -d'?' -f1)
-            # Remove spaces from filename to prevent URL breaking
-            SAFE_NAME=$(echo "$CLEAN_NAME" | tr ' ' '_')
+            # Initial clean up of the name
+            RAW_NAME=$(basename "$URL" | cut -d'?' -f1 | tr ' ' '_')
             
-            echo "Downloading $SAFE_NAME..."
-            curl -L "$URL" -o "$SAFE_NAME"
+            # Generate the Timestamp
+            TS=$(date +'%Y-%m-%d_%H-%M-%S')
+
+            # Split extension and filename to insert timestamp
+            if [[ "$RAW_NAME" == *.* ]]; then
+                EXT="${RAW_NAME##*.}"
+                BASE="${RAW_NAME%.*}"
+                FINAL_NAME="${BASE}_${TS}.${EXT}"
+            else
+                FINAL_NAME="${RAW_NAME}_${TS}"
+            fi
             
-            if [ -f "$SAFE_NAME" ]; then
-              FILE_SIZE=$(du -m "$SAFE_NAME" | cut -f1)
+            echo "Downloading as $FINAL_NAME..."
+            curl -L "$URL" -o "$FINAL_NAME"
+            
+            if [ -f "$FINAL_NAME" ]; then
+              FILE_SIZE=$(du -m "$FINAL_NAME" | cut -f1)
 
               if [ "$FILE_SIZE" -gt 95 ]; then
-                TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
-                TARGET_DIR="Downloads/$TIMESTAMP-$SAFE_NAME"
+                # LARGE FILE: Create folder named after the timestamped file
+                TARGET_DIR="Downloads/$FINAL_NAME-Archive"
                 mkdir -p "$TARGET_DIR"
-                7z a -v95m "$TARGET_DIR/${SAFE_NAME}.7z" "$SAFE_NAME"
-                rm "$SAFE_NAME"
+                7z a -v95m "$TARGET_DIR/${FINAL_NAME}.7z" "$FINAL_NAME"
+                rm "$FINAL_NAME"
               else
-                mv "$SAFE_NAME" "Downloads/"
+                # SMALL FILE: Move directly to Downloads
+                mv "$FINAL_NAME" "Downloads/"
               fi
             fi
           done
@@ -61,7 +73,7 @@ jobs:
           # 2. Sync with remote
           git pull origin main
 
-          # 3. Rebuild README with STABLE Direct Links
+          # 3. Rebuild README with Direct Links
           REPO_PATH="${{ github.repository }}"
           
           echo "# 📂 Global Download Archive" > README.md
@@ -72,9 +84,8 @@ jobs:
           echo "| File Name | Direct Download Link |" >> README.md
           echo "| --- | --- |" >> README.md
           
-          find Downloads -maxdepth 1 -type f | while read file; do
+          find Downloads -maxdepth 1 -type f | sort -r | while read file; do
             fname=$(basename "$file")
-            # Using the direct raw.githubusercontent.com domain
             direct_url="https://raw.githubusercontent.com/$REPO_PATH/main/Downloads/$fname"
             echo "| $fname | [Direct Download]($direct_url) |" >> README.md
           done
@@ -107,6 +118,7 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Update Archive: $(date +'%Y-%m-%d %H:%M')"
+            # Handle potential conflicts by favoring our newly built README
             git pull --rebase -X theirs origin main
             git push origin main
           fi
