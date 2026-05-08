@@ -28,56 +28,67 @@ jobs:
         run: |
           mkdir -p Downloads
           
-          # Initialize README if it doesn't exist
-          if [ ! -f README.md ]; then
-            echo "# Downloaded Files Archive" > README.md
-            echo "| File Name | Status | Download Link |" >> README.md
-            echo "| --- | --- | --- |" >> README.md
-          fi
-
-          # Loop through space-separated URLs using the env variable
+          # 1. Process New Downloads
           for URL in $FILE_URLS; do
-            # Extract filename and remove URL query parameters (e.g., ?token=...)
             CLEAN_NAME=$(basename "$URL" | cut -d'?' -f1)
-            
             echo "Downloading $CLEAN_NAME..."
             curl -L "$URL" -o "$CLEAN_NAME"
             
-            # Get file size in Megabytes
             FILE_SIZE=$(du -m "$CLEAN_NAME" | cut -f1)
 
             if [ "$FILE_SIZE" -gt 95 ]; then
-              # LARGE FILE: Create timestamped folder and split
               TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
               TARGET_DIR="Downloads/$TIMESTAMP-$CLEAN_NAME"
               mkdir -p "$TARGET_DIR"
-              
-              echo "$CLEAN_NAME is $FILE_SIZE MB. Splitting into $TARGET_DIR..."
               7z a -v95m "$TARGET_DIR/${CLEAN_NAME}.7z" "$CLEAN_NAME"
               rm "$CLEAN_NAME"
-              
-              # Add folder link to README
-              echo "| $CLEAN_NAME | Splitted (7z) | [View Folder](https://github.com/${{ github.repository }}/tree/main/$TARGET_DIR) |" >> README.md
             else
-              # SMALL FILE: Move directly to Downloads
-              echo "$CLEAN_NAME is $FILE_SIZE MB. Moving to Downloads root."
               mv "$CLEAN_NAME" "Downloads/"
-              
-              # Add direct link to README
-              DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$CLEAN_NAME"
-              echo "| $CLEAN_NAME | Original | [Download]($DOWNLOAD_LINK) |" >> README.md
             fi
+          done
+
+          # 2. Rebuild README for the Main Page
+          echo "# 📂 Global Download Archive" > README.md
+          echo "Last updated: $(date)" >> README.md
+          echo "" >> README.md
+          
+          # List root-level files in Downloads
+          echo "## 📄 Individual Files" >> README.md
+          echo "| File Name | Download Link |" >> README.md
+          echo "| --- | --- |" >> README.md
+          
+          find Downloads -maxdepth 1 -type f | while read file; do
+            fname=$(basename "$file")
+            raw_url="https://github.com/${{ github.repository }}/raw/main/Downloads/$fname"
+            echo "| $fname | [Download]($raw_url) |" >> README.md
+          done
+
+          # List folders (the split files)
+          echo "" >> README.md
+          echo "## 📁 Split Archives" >> README.md
+          
+          find Downloads -maxdepth 1 -type d ! -path "Downloads" | while read dir; do
+            dirname=$(basename "$dir")
+            echo "### $dirname" >> README.md
+            echo "| Part Name | Direct Link |" >> README.md
+            echo "| --- | --- |" >> README.md
+            
+            find "$dir" -type f | while read part; do
+              pname=$(basename "$part")
+              p_url="https://github.com/${{ github.repository }}/raw/main/Downloads/$dirname/$pname"
+              echo "| $pname | [Download Part]($p_url) |" >> README.md
+            done
+            echo "" >> README.md
           done
 
       - name: Commit and Push Changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add Downloads/ README.md
-          # Only commit if there are actually changes to avoid workflow errors
+          git add .
           if git diff --quiet && git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Organized download (Conditional Splitting)"
+            git commit -m "Update README and Archive structure"
             git push
           fi
