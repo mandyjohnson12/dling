@@ -7,6 +7,11 @@ on:
         required: true
         type: string
 
+# Prevents multiple workflows from pushing to the repo at the same time
+concurrency:
+  group: download-archive
+  cancel-in-progress: false
+
 jobs:
   download_and_commit:
     runs-on: ubuntu-latest
@@ -16,6 +21,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches all history so rebase works correctly
 
       - name: Install Dependencies
         run: |
@@ -34,16 +41,19 @@ jobs:
             echo "Downloading $CLEAN_NAME..."
             curl -L "$URL" -o "$CLEAN_NAME"
             
-            FILE_SIZE=$(du -m "$CLEAN_NAME" | cut -f1)
+            # Check if file exists before proceeding
+            if [ -f "$CLEAN_NAME" ]; then
+              FILE_SIZE=$(du -m "$CLEAN_NAME" | cut -f1)
 
-            if [ "$FILE_SIZE" -gt 95 ]; then
-              TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
-              TARGET_DIR="Downloads/$TIMESTAMP-$CLEAN_NAME"
-              mkdir -p "$TARGET_DIR"
-              7z a -v95m "$TARGET_DIR/${CLEAN_NAME}.7z" "$CLEAN_NAME"
-              rm "$CLEAN_NAME"
-            else
-              mv "$CLEAN_NAME" "Downloads/"
+              if [ "$FILE_SIZE" -gt 95 ]; then
+                TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
+                TARGET_DIR="Downloads/$TIMESTAMP-$CLEAN_NAME"
+                mkdir -p "$TARGET_DIR"
+                7z a -v95m "$TARGET_DIR/${CLEAN_NAME}.7z" "$CLEAN_NAME"
+                rm "$CLEAN_NAME"
+              else
+                mv "$CLEAN_NAME" "Downloads/"
+              fi
             fi
           done
 
@@ -67,13 +77,13 @@ jobs:
           echo "" >> README.md
           echo "## 📁 Split Archives" >> README.md
           
-          find Downloads -maxdepth 1 -type d ! -path "Downloads" | while read dir; do
+          find Downloads -maxdepth 1 -type d ! -path "Downloads" | sort -r | while read dir; do
             dirname=$(basename "$dir")
             echo "### $dirname" >> README.md
             echo "| Part Name | Direct Link |" >> README.md
             echo "| --- | --- |" >> README.md
             
-            find "$dir" -type f | while read part; do
+            find "$dir" -type f | sort | while read part; do
               pname=$(basename "$part")
               p_url="https://github.com/${{ github.repository }}/raw/main/Downloads/$dirname/$pname"
               echo "| $pname | [Download Part]($p_url) |" >> README.md
@@ -85,10 +95,17 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
           git add .
+          
           if git diff --quiet && git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Update README and Archive structure"
-            git push
+            git commit -m "Update Archive: $(date +'%Y-%m-%d %H:%M')"
+            
+            # Pull the latest changes from remote and apply our commit on top
+            # This solves the "rejected main -> main" error
+            git pull --rebase origin main
+            
+            git push origin main
           fi
