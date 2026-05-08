@@ -1,4 +1,4 @@
-name: Conditional Split & Organize
+name: File Downloading and Updating Readme
 on:
   workflow_dispatch:
     inputs:
@@ -29,7 +29,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y p7zip-full
 
-      - name: Process Downloads
+      - name: Process Downloads(itsMehdiNrz)
         env:
           FILE_URLS: ${{ github.event.inputs.file_urls }}
         run: |
