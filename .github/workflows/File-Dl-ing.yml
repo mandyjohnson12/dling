@@ -1,4 +1,4 @@
-name: File Downloading and Updating Readme
+name: Conditional Split & Organize
 on:
   workflow_dispatch:
     inputs:
@@ -7,7 +7,7 @@ on:
         required: true
         type: string
 
-# Prevents multiple workflows from pushing to the repo at the same time
+# Ensures only one download task runs at a time to minimize conflicts
 concurrency:
   group: download-archive
   cancel-in-progress: false
@@ -22,14 +22,14 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetches all history so rebase works correctly
+          fetch-depth: 0 
 
       - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y p7zip-full
 
-      - name: Process Downloads(itsMehdiNrz)
+      - name: Process Downloads
         env:
           FILE_URLS: ${{ github.event.inputs.file_urls }}
         run: |
@@ -41,7 +41,6 @@ jobs:
             echo "Downloading $CLEAN_NAME..."
             curl -L "$URL" -o "$CLEAN_NAME"
             
-            # Check if file exists before proceeding
             if [ -f "$CLEAN_NAME" ]; then
               FILE_SIZE=$(du -m "$CLEAN_NAME" | cut -f1)
 
@@ -57,12 +56,15 @@ jobs:
             fi
           done
 
-          # 2. Rebuild README for the Main Page
+          # 2. Sync with remote before rebuilding README
+          # This ensures we see files uploaded by other recent runs
+          git pull origin main
+
+          # 3. Rebuild README for the Main Page
           echo "# 📂 Global Download Archive" > README.md
           echo "Last updated: $(date)" >> README.md
           echo "" >> README.md
           
-          # List root-level files in Downloads
           echo "## 📄 Individual Files" >> README.md
           echo "| File Name | Download Link |" >> README.md
           echo "| --- | --- |" >> README.md
@@ -73,7 +75,6 @@ jobs:
             echo "| $fname | [Download]($raw_url) |" >> README.md
           done
 
-          # List folders (the split files)
           echo "" >> README.md
           echo "## 📁 Split Archives" >> README.md
           
@@ -103,9 +104,8 @@ jobs:
           else
             git commit -m "Update Archive: $(date +'%Y-%m-%d %H:%M')"
             
-            # Pull the latest changes from remote and apply our commit on top
-            # This solves the "rejected main -> main" error
-            git pull --rebase origin main
+            # The -X theirs flag forces Git to use our new README if a conflict occurs
+            git pull --rebase -X theirs origin main
             
             git push origin main
           fi
