@@ -1,10 +1,11 @@
-name: Auto-Download to Folder
+name: Multi-Download to Folder
 on:
   workflow_dispatch:
     inputs:
-      file_url:
-        description: 'The direct URL of the file to download'
+      file_urls:
+        description: 'Paste direct URLs (one per line)'
         required: true
+        type: string
 
 jobs:
   download_and_commit:
@@ -16,25 +17,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Download to Downloads Folder
+      - name: Download Files and Update README
         run: |
-          # Create the folder if it doesn't exist
           mkdir -p Downloads
           
-          # Extract filename and set path
-          URL="${{ github.event.inputs.file_url }}"
-          FILENAME=$(basename "$URL")
-          FILEPATH="Downloads/$FILENAME"
-          
-          echo "Downloading to $FILEPATH..."
-          curl -L "$URL" -o "$FILEPATH"
-          
-          # Pass variables to next steps
-          echo "FINAL_FILENAME=$FILENAME" >> $GITHUB_ENV
-          echo "FINAL_PATH=$FILEPATH" >> $GITHUB_ENV
-
-      - name: Update README
-        run: |
+          # Initialize README if it doesn't exist
           if [ ! -f README.md ]; then
             echo "# Downloaded Files Archive" > README.md
             echo "Below is a list of files managed by this workflow:" >> README.md
@@ -42,19 +29,32 @@ jobs:
             echo "| File Name | Download Link |" >> README.md
             echo "| --- | --- |" >> README.md
           fi
-          
-          # Generate the link pointing to the Downloads folder
-          # Note: We use the URL-encoded path for the link
-          DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/${{ env.FINAL_FILENAME }}"
-          
-          echo "| ${{ env.FINAL_FILENAME }} | [Download]($DOWNLOAD_LINK) |" >> README.md
 
-      - name: Commit and Push
+          # Read the multi-line input
+          echo "${{ github.event.inputs.file_urls }}" > urls.txt
+
+          while IFS= read -r URL || [ -n "$URL" ]; do
+            # Skip empty lines
+            [ -z "$URL" ] && continue
+            
+            # Clean the URL (remove carriage returns from Windows copy-paste)
+            CLEAN_URL=$(echo "$URL" | tr -d '\r')
+            FILENAME=$(basename "$CLEAN_URL")
+            FILEPATH="Downloads/$FILENAME"
+            
+            echo "Downloading $FILENAME..."
+            curl -L "$CLEAN_URL" -o "$FILEPATH"
+            
+            # Add to README table
+            DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$FILENAME"
+            echo "| $FILENAME | [Download]($DOWNLOAD_LINK) |" >> README.md
+            
+          done < urls.txt
+
+      - name: Commit and Push Changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Add the specific file and README
-          git add "${{ env.FINAL_PATH }}" README.md
-          git commit -m "Added ${{ env.FINAL_FILENAME }} to Downloads"
+          git add Downloads/ README.md
+          git commit -m "Batch download of multiple files" || echo "No changes to commit"
           git push
