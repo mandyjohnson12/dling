@@ -1,0 +1,40 @@
+name: Clear Downloads Folder
+on:
+  workflow_dispatch: # Allows you to run it manually
+
+jobs:
+  clear_folder:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Empty Downloads Folder
+        run: |
+          # Delete everything inside Downloads but keep the folder
+          if [ -d "Downloads" ]; then
+            rm -rf Downloads/*
+            # Create a .gitkeep so the folder itself isn't deleted by Git
+            touch Downloads/.gitkeep
+          fi
+
+      - name: Reset README
+        run: |
+          # Reset the README table to keep it clean
+          echo "# Downloaded Files Archive" > README.md
+          echo "Below is a list of files managed by this workflow:" >> README.md
+          echo "" >> README.md
+          echo "| File Name | Download Link |" >> README.md
+          echo "| --- | --- |" >> README.md
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add Downloads/ README.md
+          # Use || true so the workflow doesn't fail if the folder was already empty
+          git commit -m "Cleanup: Cleared Downloads folder and reset README" || true
+          git push
