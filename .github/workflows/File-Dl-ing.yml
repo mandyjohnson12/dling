@@ -7,7 +7,6 @@ on:
         required: true
         type: string
 
-# Ensures only one download task runs at a time to minimize conflicts
 concurrency:
   group: download-archive
   cancel-in-progress: false
@@ -38,41 +37,46 @@ jobs:
           # 1. Process New Downloads
           for URL in $FILE_URLS; do
             CLEAN_NAME=$(basename "$URL" | cut -d'?' -f1)
-            echo "Downloading $CLEAN_NAME..."
-            curl -L "$URL" -o "$CLEAN_NAME"
+            # Remove spaces from filename to prevent URL breaking
+            SAFE_NAME=$(echo "$CLEAN_NAME" | tr ' ' '_')
             
-            if [ -f "$CLEAN_NAME" ]; then
-              FILE_SIZE=$(du -m "$CLEAN_NAME" | cut -f1)
+            echo "Downloading $SAFE_NAME..."
+            curl -L "$URL" -o "$SAFE_NAME"
+            
+            if [ -f "$SAFE_NAME" ]; then
+              FILE_SIZE=$(du -m "$SAFE_NAME" | cut -f1)
 
               if [ "$FILE_SIZE" -gt 95 ]; then
                 TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
-                TARGET_DIR="Downloads/$TIMESTAMP-$CLEAN_NAME"
+                TARGET_DIR="Downloads/$TIMESTAMP-$SAFE_NAME"
                 mkdir -p "$TARGET_DIR"
-                7z a -v95m "$TARGET_DIR/${CLEAN_NAME}.7z" "$CLEAN_NAME"
-                rm "$CLEAN_NAME"
+                7z a -v95m "$TARGET_DIR/${SAFE_NAME}.7z" "$SAFE_NAME"
+                rm "$SAFE_NAME"
               else
-                mv "$CLEAN_NAME" "Downloads/"
+                mv "$SAFE_NAME" "Downloads/"
               fi
             fi
           done
 
-          # 2. Sync with remote before rebuilding README
-          # This ensures we see files uploaded by other recent runs
+          # 2. Sync with remote
           git pull origin main
 
-          # 3. Rebuild README for the Main Page
+          # 3. Rebuild README with STABLE Direct Links
+          REPO_PATH="${{ github.repository }}"
+          
           echo "# 📂 Global Download Archive" > README.md
           echo "Last updated: $(date)" >> README.md
           echo "" >> README.md
           
           echo "## 📄 Individual Files" >> README.md
-          echo "| File Name | Download Link |" >> README.md
+          echo "| File Name | Direct Download Link |" >> README.md
           echo "| --- | --- |" >> README.md
           
           find Downloads -maxdepth 1 -type f | while read file; do
             fname=$(basename "$file")
-            raw_url="https://github.com/${{ github.repository }}/raw/main/Downloads/$fname"
-            echo "| $fname | [Download]($raw_url) |" >> README.md
+            # Using the direct raw.githubusercontent.com domain
+            direct_url="https://raw.githubusercontent.com/$REPO_PATH/main/Downloads/$fname"
+            echo "| $fname | [Direct Download]($direct_url) |" >> README.md
           done
 
           echo "" >> README.md
@@ -86,7 +90,7 @@ jobs:
             
             find "$dir" -type f | sort | while read part; do
               pname=$(basename "$part")
-              p_url="https://github.com/${{ github.repository }}/raw/main/Downloads/$dirname/$pname"
+              p_url="https://raw.githubusercontent.com/$REPO_PATH/main/Downloads/$dirname/$pname"
               echo "| $pname | [Download Part]($p_url) |" >> README.md
             done
             echo "" >> README.md
@@ -103,9 +107,6 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Update Archive: $(date +'%Y-%m-%d %H:%M')"
-            
-            # The -X theirs flag forces Git to use our new README if a conflict occurs
             git pull --rebase -X theirs origin main
-            
             git push origin main
           fi
