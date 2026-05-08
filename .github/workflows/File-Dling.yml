@@ -1,4 +1,4 @@
-name: Space-Separated Multi-Download
+name: Conditional Split & Organize
 on:
   workflow_dispatch:
     inputs:
@@ -17,35 +17,48 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Download Files and Update README
+      - name: Process Downloads
         run: |
           mkdir -p Downloads
           
           # Initialize README if it doesn't exist
           if [ ! -f README.md ]; then
             echo "# Downloaded Files Archive" > README.md
-            echo "Below is a list of files managed by this workflow:" >> README.md
-            echo "" >> README.md
-            echo "| File Name | Download Link |" >> README.md
-            echo "| --- | --- |" >> README.md
+            echo "| File Name | Status | Download Link |" >> README.md
+            echo "| --- | --- | --- |" >> README.md
           fi
 
-          # Loop through the input, splitting by spaces
+          # Loop through space-separated URLs
           for URL in ${{ github.event.inputs.file_urls }}; do
-            
-            # Extract filename from URL
             FILENAME=$(basename "$URL")
-            FILEPATH="Downloads/$FILENAME"
             
-            echo "Processing $FILENAME..."
+            echo "Downloading $FILENAME..."
+            curl -L "$URL" -o "$FILENAME"
             
-            # Download the file
-            curl -L "$URL" -o "$FILEPATH"
-            
-            # Add to README table
-            DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$FILENAME"
-            echo "| $FILENAME | [Download]($DOWNLOAD_LINK) |" >> README.md
-            
+            # Get file size in Megabytes
+            FILE_SIZE=$(du -m "$FILENAME" | cut -f1)
+
+            if [ "$FILE_SIZE" -gt 95 ]; then
+              # LARGE FILE: Create timestamped folder and split
+              TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
+              TARGET_DIR="Downloads/$TIMESTAMP-$FILENAME"
+              mkdir -p "$TARGET_DIR"
+              
+              echo "$FILENAME is $FILE_SIZE MB. Splitting into $TARGET_DIR..."
+              7z a -v95m "$TARGET_DIR/${FILENAME}.7z" "$FILENAME"
+              rm "$FILENAME"
+              
+              # Add folder link to README
+              echo "| $FILENAME | Splitted (7z) | [View Folder](https://github.com/${{ github.repository }}/tree/main/$TARGET_DIR) |" >> README.md
+            else
+              # SMALL FILE: Move directly to Downloads
+              echo "$FILENAME is $FILE_SIZE MB. Moving to Downloads root."
+              mv "$FILENAME" "Downloads/"
+              
+              # Add direct link to README
+              DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$FILENAME"
+              echo "| $FILENAME | Original | [Download]($DOWNLOAD_LINK) |" >> README.md
+            fi
           done
 
       - name: Commit and Push Changes
@@ -53,5 +66,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add Downloads/ README.md
-          git commit -m "Batch download via space-separated links" || echo "No changes to commit"
+          git commit -m "Organized download (Conditional Splitting)" || echo "No changes"
           git push
