@@ -1,5 +1,5 @@
 # 📂 Global Download Archive
-Last updated: Sat May  9 07:59:19 UTC 2026
+Last updated: Sat May  9 15:58:41 UTC 2026
 
 ## 📄 Individual Files
 | File Name | Direct Download Link |
@@ -8,3 +8,9 @@ Last updated: Sat May  9 07:59:19 UTC 2026
 | .gitkeep | [Direct Download](https://raw.githubusercontent.com/mandyjohnson12/Dl-ing/main/Downloads/.gitkeep) |
 
 ## 📁 Split Archives
+### DLSS.Swapper-1.2.4.0-installer_2026-05-09_15-58-30.exe-Archive
+| Part Name | Direct Link |
+| --- | --- |
+| DLSS.Swapper-1.2.4.0-installer_2026-05-09_15-58-30.exe.7z.001 | [Download Part](https://raw.githubusercontent.com/mandyjohnson12/Dl-ing/main/Downloads/DLSS.Swapper-1.2.4.0-installer_2026-05-09_15-58-30.exe-Archive/DLSS.Swapper-1.2.4.0-installer_2026-05-09_15-58-30.exe.7z.001) |
+| DLSS.Swapper-1.2.4.0-installer_2026-05-09_15-58-30.exe.7z.002 | [Download Part](https://raw.githubusercontent.com/mandyjohnson12/Dl-ing/main/Downloads/DLSS.Swapper-1.2.4.0-installer_2026-05-09_15-58-30.exe-Archive/DLSS.Swapper-1.2.4.0-installer_2026-05-09_15-58-30.exe.7z.002) |
+
