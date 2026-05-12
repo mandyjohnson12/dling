@@ -1,9 +1,10 @@
 # 📂 Global Download Archive
-Last updated: Mon May 11 06:17:51 UTC 2026
+Last updated: Tue May 12 21:30:47 UTC 2026
 
 ## 📄 Individual Files
 | File Name | Direct Download Link |
 | --- | --- |
+| v2rayNG_2.1.7-fdroid_arm64-v8a_2026-05-12_21-30-47.apk | [Direct Download](https://raw.githubusercontent.com/mandyjohnson12/Dl-ing/main/Downloads/v2rayNG_2.1.7-fdroid_arm64-v8a_2026-05-12_21-30-47.apk) |
 | mhrv-rs-windows-amd64_2026-05-11_06-17-51.zip | [Direct Download](https://raw.githubusercontent.com/mandyjohnson12/Dl-ing/main/Downloads/mhrv-rs-windows-amd64_2026-05-11_06-17-51.zip) |
 | mhrv-rs-android-arm64-v8a-v1.9.20_2026-05-10_22-11-41.apk | [Direct Download](https://raw.githubusercontent.com/mandyjohnson12/Dl-ing/main/Downloads/mhrv-rs-android-arm64-v8a-v1.9.20_2026-05-10_22-11-41.apk) |
 | gAAAAABqALMMUabXY2HkRtjnlwFYEYShE2jBhPfEpaGg_Vq4rTawr8xlHrSWQsB6pwQEeIvaVFGMCL5hdN_CKsFKp7WcAM9L3Gyw6EF5vg7dUQ3ySR3LUGSqMMO0LIw7tHBIbrgtni_r_2026-05-10_16-36-15 | [Direct Download](https://raw.githubusercontent.com/mandyjohnson12/Dl-ing/main/Downloads/gAAAAABqALMMUabXY2HkRtjnlwFYEYShE2jBhPfEpaGg_Vq4rTawr8xlHrSWQsB6pwQEeIvaVFGMCL5hdN_CKsFKp7WcAM9L3Gyw6EF5vg7dUQ3ySR3LUGSqMMO0LIw7tHBIbrgtni_r_2026-05-10_16-36-15) |
