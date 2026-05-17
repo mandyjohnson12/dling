@@ -31,40 +31,50 @@ jobs:
         run: |
           mkdir -p Downloads
           
-          # Initialize README if it doesn't exist with correct 3-column headers
+          # Initialize README with a title if it doesn't exist
           if [ ! -f README.md ]; then
             echo "# Downloaded Files Archive" > README.md
-            echo "Below is a list of files managed by this workflow:" >> README.md
+            echo "Below is a history of files managed by this workflow:" >> README.md
             echo "" >> README.md
-            echo "| File Name | Status | Download Link |" >> README.md
-            echo "| --- | --- | --- |" >> README.md
           fi
+
+          # Capture a single timestamp for this entire download batch
+          BATCH_TIMESTAMP=$(date +'%Y-%m-%d %H:%M:%S')
+          FOLDER_TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
+          
+          # Create a new, separate table header for this specific batch session
+          TEMP_README="temp_batch.md"
+          echo "### 📥 Download Batch: $BATCH_TIMESTAMP" > "$TEMP_README"
+          echo "| File Name / Part | Status | Direct Download Link |" >> "$TEMP_README"
+          echo "| --- | --- | --- |" >> "$TEMP_README"
 
           CHOICE="${{ github.event.inputs.compression_choice }}"
 
-          # Using the safe environment variable prevents syntax parsing errors
           for URL in $INPUT_URLS; do
             FILENAME=$(basename "$URL")
             
             echo "Downloading $FILENAME..."
-            # Double quotes protect special characters like ( ) in the URL and FILENAME
             curl -L "$URL" -o "$FILENAME"
             
             # Get file size in Megabytes
             FILE_SIZE=$(du -m "$FILENAME" | cut -f1)
 
             if [ "$FILE_SIZE" -gt 95 ]; then
-              # FORCE SPLIT FOR LARGE FILES
-              TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
-              TARGET_DIR="Downloads/$TIMESTAMP-$FILENAME"
+              # LARGE FILE: Create timestamped folder and split
+              TARGET_DIR="Downloads/${FOLDER_TIMESTAMP}-${FILENAME}"
               mkdir -p "$TARGET_DIR"
               
               echo "$FILENAME is $FILE_SIZE MB. Automatically splitting into $TARGET_DIR..."
               7z a -v95m "$TARGET_DIR/${FILENAME}.7z" "$FILENAME"
               rm "$FILENAME"
               
-              # Perfectly aligned 3-column entry
-              echo "| $FILENAME | Forced Split (>95MB) | [View Folder](https://github.com/${{ github.repository }}/tree/main/$TARGET_DIR) |" >> README.md
+              # Loop through the folder to find the generated split parts and list them directly
+              for PART_PATH in "$TARGET_DIR"/*; do
+                PART_NAME=$(basename "$PART_PATH")
+                DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/$TARGET_DIR/$PART_NAME"
+                
+                echo "| ↳ $PART_NAME | Split Part | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
+              done
             
             else
               # HANDLES SMALL FILES BASED ON USER CHOICE
@@ -76,23 +86,41 @@ jobs:
                 rm "$FILENAME"
                 
                 DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$ZIP_NAME"
-                # Perfectly aligned 3-column entry
-                echo "| $ZIP_NAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> README.md
+                echo "| $ZIP_NAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
               else
                 echo "Keeping original format for $FILENAME."
                 mv "$FILENAME" "Downloads/"
                 
                 DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$FILENAME"
-                # Perfectly aligned 3-column entry
-                echo "| $FILENAME | Original | [Download]($DOWNLOAD_LINK) |" >> README.md
+                echo "| $FILENAME | Original | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
               fi
             fi
           done
+
+          # Append a spacer line after the table
+          echo "" >> "$TEMP_README"
+          echo "---" >> "$TEMP_README"
+          echo "" >> "$TEMP_README"
+
+          # Insert the new batch table at the TOP of the archive list (below the header text)
+          # This ensures your newest downloads are always at the top of the page.
+          if grep -q "Below is a list of files managed by this workflow:" README.md; then
+             # Fixes legacy README if present
+             sed -i 's/Below is a list of files managed by this workflow:/Below is a history of files managed by this workflow:/g' README.md
+          fi
+
+          # Split README into top intro and old content, sandwiching the new table in between
+          sed -n '1,2p' README.md > top.txt
+          sed -n '3,$p' README.md > bottom.txt
+          cat top.txt "$TEMP_README" bottom.txt > README.md
+          
+          # Clean up temporary construction files
+          rm top.txt bottom.txt "$TEMP_README"
 
       - name: Commit and Push Changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add Downloads/ README.md
-          git commit -m "Downloads processed with user formatting preference" || echo "No changes"
+          git commit -m "New isolated download batch added to README" || echo "No changes"
           git push
