@@ -37,9 +37,10 @@ jobs:
           
           if [ ! -f README.md ]; then
             echo "# Downloaded Files Archive" > README.md
+            echo "Below is a list of files managed by this workflow:" >> README.md
             echo "" >> README.md
-            echo "| File Name | Status | Download Link |" >> README.md
-            echo "| --- | --- | --- |" >> README.md
+            echo "| File Name | Download Link |" >> README.md
+            echo "| --- | --- |" >> README.md
           fi
           
           read -ra URL_ARRAY <<< "$URLS"
@@ -50,7 +51,7 @@ jobs:
             curl -L -o "$FILENAME" "$URL"
             
             if [ ! -f "$FILENAME" ]; then
-              echo "| $FILENAME | Failed | Download Error |" >> README.md
+              echo "| $FILENAME | Download Failed |" >> README.md
               continue
             fi
             
@@ -67,19 +68,19 @@ jobs:
               7z a -v95m "$TARGET_DIR/${SAFE_FILENAME}.7z" "$FILENAME"
               rm "$FILENAME"
               FOLDER_LINK="${{ github.server_url }}/${{ github.repository }}/tree/main/$TARGET_DIR"
-              echo "| $FILENAME | Split (>95MB) | [View Folder]($FOLDER_LINK) |" >> README.md
+              echo "| $FILENAME | [View Folder]($FOLDER_LINK) |" >> README.md
             else
               if [ "$CHOICE" = "Zip the file" ]; then
                 SAFE_ZIP_NAME=$(echo "$FILENAME" | sed 's/[()]//g' | sed 's/[^a-zA-Z0-9._-]/_/g' | sed 's/\.[^.]*$/.zip/')
                 7z a "Downloads/$SAFE_ZIP_NAME" "$FILENAME"
                 rm "$FILENAME"
                 DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/raw/main/Downloads/$SAFE_ZIP_NAME"
-                echo "| $FILENAME | Compressed | [Download]($DOWNLOAD_LINK) |" >> README.md
+                echo "| $FILENAME | [Download Zip]($DOWNLOAD_LINK) |" >> README.md
               else
                 SAFE_FILENAME=$(echo "$FILENAME" | sed 's/[()]//g' | sed 's/[^a-zA-Z0-9._-]/_/g')
                 mv "$FILENAME" "Downloads/$SAFE_FILENAME"
                 DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/raw/main/Downloads/$SAFE_FILENAME"
-                echo "| $FILENAME | Original | [Download]($DOWNLOAD_LINK) |" >> README.md
+                echo "| $FILENAME | [Original File]($DOWNLOAD_LINK) |" >> README.md
               fi
             fi
           done
