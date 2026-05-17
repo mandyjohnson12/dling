@@ -35,12 +35,25 @@ jobs:
         run: |
           mkdir -p Downloads
           
-          # Initialize README if it doesn't exist
-          if [ ! -f README.md ]; then
-            echo "# Downloaded Files Archive" > README.md
-            echo "" >> README.md
-            echo "| File Name | Status | Download Link |" >> README.md
-            echo "| --- | --- | --- |" >> README.md
+          # Initialize README if it doesn't exist or is empty
+          if [ ! -f README.md ] || [ ! -s README.md ]; then
+            cat > README.md << 'EOF'
+# Downloaded Files Archive
+
+Below is a list of files managed by this workflow:
+
+| File Name | Status | Download Link |
+|-----------|--------|---------------|
+EOF
+          else
+            # Remove any existing table rows but keep header
+            sed -i '/^|/d' README.md
+            # Re-add header if missing
+            if ! grep -q "| File Name | Status | Download Link |" README.md; then
+              echo "" >> README.md
+              echo "| File Name | Status | Download Link |" >> README.md
+              echo "|-----------|--------|---------------|" >> README.md
+            fi
           fi
           
           # خواندن URLها به صورت آرایه
@@ -59,7 +72,7 @@ jobs:
             # بررسی موفقیت دانلود
             if [ ! -f "$FILENAME" ]; then
               echo "Failed to download $FILENAME"
-              echo "| $FILENAME | ❌ Download Failed | - |" >> README.md
+              echo "| $FILENAME | ❌ Failed | Download Error |" >> README.md
               continue
             fi
             
@@ -85,7 +98,7 @@ jobs:
               
               # لینک پوشه
               FOLDER_LINK="${{ github.server_url }}/${{ github.repository }}/tree/main/$TARGET_DIR"
-              echo "| $FILENAME | 🔸 Forced Split (>95MB) | [📂 View Folder]($FOLDER_LINK) |" >> README.md
+              echo "| $FILENAME | 🔸 Split (>95MB) | [📂 View Folder]($FOLDER_LINK) |" >> README.md
             
             else
               # فایل‌های کوچک
@@ -99,7 +112,7 @@ jobs:
                 rm "$FILENAME"
                 
                 DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/raw/main/Downloads/$SAFE_ZIP_NAME"
-                echo "| $FILENAME | 📦 Compressed (Zip) | [🔗 Download]($DOWNLOAD_LINK) |" >> README.md
+                echo "| $FILENAME | 📦 Compressed | [🔗 Download]($DOWNLOAD_LINK) |" >> README.md
               else
                 # حفظ فرمت اصلی با نام پاک شده
                 SAFE_FILENAME=$(echo "$FILENAME" | sed 's/[()]//g' | sed 's/[^a-zA-Z0-9._-]/_/g')
@@ -111,10 +124,10 @@ jobs:
             fi
           done
           
-          # اضافه کردن توضیحات به انتهای README
+          # اضافه کردن فوتر
           echo "" >> README.md
           echo "---" >> README.md
-          echo "*Last updated: $(date)*" >> README.md
+          echo "*Last updated: $(date '+%Y-%m-%d %H:%M:%S UTC')*" >> README.md
 
       - name: Commit and Push Changes
         run: |
