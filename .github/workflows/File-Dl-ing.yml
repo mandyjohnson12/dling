@@ -29,6 +29,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y p7zip-full
 
       - name: Process Downloads
+        env:
+          URLS: ${{ github.event.inputs.file_urls }}
+          CHOICE: ${{ github.event.inputs.compression_choice }}
         run: |
           mkdir -p Downloads
           
@@ -39,16 +42,15 @@ jobs:
             echo "| --- | --- | --- |" >> README.md
           fi
 
-          CHOICE="${{ github.event.inputs.compression_choice }}"
-
-          # Loop through space-separated URLs
-          for URL in ${{ github.event.inputs.file_urls }}; do
-            # Extract filename from URL and handle special characters
-            RAW_FILENAME=$(basename "$URL")
-            # Use printf to properly handle special characters
-            FILENAME=$(printf "%s" "$RAW_FILENAME")
+          # Convert space-separated URLs to array safely
+          read -ra URL_ARRAY <<< "$URLS"
+          
+          for URL in "${URL_ARRAY[@]}"; do
+            # Extract filename from URL
+            FILENAME=$(basename "$URL")
             
-            echo "Downloading $FILENAME..."
+            echo "Downloading: $FILENAME"
+            echo "From: $URL"
             
             # Download with proper quoting
             curl -L -o "$FILENAME" "$URL"
@@ -68,10 +70,12 @@ jobs:
               FILE_SIZE=1
             fi
 
+            echo "File size: $FILE_SIZE MB"
+
             if [ "$FILE_SIZE" -gt 95 ]; then
               # FORCE SPLIT FOR LARGE FILES
               TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
-              SAFE_FILENAME=$(echo "$FILENAME" | sed 's/[^a-zA-Z0-9._-]/_/g')
+              SAFE_FILENAME=$(echo "$FILENAME" | sed 's/[()]//g' | sed 's/[^a-zA-Z0-9._-]/_/g')
               TARGET_DIR="Downloads/$TIMESTAMP-$SAFE_FILENAME"
               mkdir -p "$TARGET_DIR"
               
@@ -84,7 +88,7 @@ jobs:
             else
               # HANDLES SMALL FILES BASED ON USER CHOICE
               if [ "$CHOICE" = "Zip the file" ]; then
-                SAFE_ZIP_NAME=$(echo "${FILENAME%.*}.zip" | sed 's/[^a-zA-Z0-9._-]/_/g')
+                SAFE_ZIP_NAME=$(echo "$FILENAME" | sed 's/\.[^.]*$//' | sed 's/[()]//g' | sed 's/[^a-zA-Z0-9._-]/_/g').zip
                 echo "Zipping $FILENAME into $SAFE_ZIP_NAME..."
                 
                 # Zip the file using 7z
@@ -95,7 +99,7 @@ jobs:
                 echo "| $FILENAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> README.md
               else
                 echo "Keeping original format for $FILENAME."
-                SAFE_FILENAME=$(echo "$FILENAME" | sed 's/[^a-zA-Z0-9._-]/_/g')
+                SAFE_FILENAME=$(echo "$FILENAME" | sed 's/[()]//g' | sed 's/[^a-zA-Z0-9._-]/_/g')
                 mv "$FILENAME" "Downloads/$SAFE_FILENAME"
                 
                 DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/raw/main/Downloads/$SAFE_FILENAME"
@@ -103,6 +107,8 @@ jobs:
               fi
             fi
           done
+          
+          echo "Processing complete!"
 
       - name: Commit and Push Changes
         run: |
