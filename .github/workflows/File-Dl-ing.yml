@@ -43,9 +43,14 @@ jobs:
 
           # Loop through space-separated URLs
           for URL in ${{ github.event.inputs.file_urls }}; do
-            FILENAME=$(basename "$URL")
+            # Extract filename from URL and handle special characters
+            RAW_FILENAME=$(basename "$URL")
+            # Use printf to properly handle special characters
+            FILENAME=$(printf "%s" "$RAW_FILENAME")
             
             echo "Downloading $FILENAME..."
+            
+            # Download with proper quoting
             curl -L -o "$FILENAME" "$URL"
             
             # Check if download was successful
@@ -66,11 +71,12 @@ jobs:
             if [ "$FILE_SIZE" -gt 95 ]; then
               # FORCE SPLIT FOR LARGE FILES
               TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
-              TARGET_DIR="Downloads/$TIMESTAMP-$FILENAME"
+              SAFE_FILENAME=$(echo "$FILENAME" | sed 's/[^a-zA-Z0-9._-]/_/g')
+              TARGET_DIR="Downloads/$TIMESTAMP-$SAFE_FILENAME"
               mkdir -p "$TARGET_DIR"
               
               echo "$FILENAME is $FILE_SIZE MB. Automatically splitting into $TARGET_DIR..."
-              7z a -v95m "$TARGET_DIR/${FILENAME}.7z" "$FILENAME"
+              7z a -v95m "$TARGET_DIR/${SAFE_FILENAME}.7z" "$FILENAME"
               rm "$FILENAME"
               
               echo "| $FILENAME | Forced Split (>95MB) | [View Folder](${{ github.server_url }}/${{ github.repository }}/tree/main/$TARGET_DIR) |" >> README.md
@@ -78,20 +84,21 @@ jobs:
             else
               # HANDLES SMALL FILES BASED ON USER CHOICE
               if [ "$CHOICE" = "Zip the file" ]; then
-                ZIP_NAME="${FILENAME%.*}.zip"
-                echo "Zipping $FILENAME into $ZIP_NAME..."
+                SAFE_ZIP_NAME=$(echo "${FILENAME%.*}.zip" | sed 's/[^a-zA-Z0-9._-]/_/g')
+                echo "Zipping $FILENAME into $SAFE_ZIP_NAME..."
                 
                 # Zip the file using 7z
-                7z a "Downloads/$ZIP_NAME" "$FILENAME"
+                7z a "Downloads/$SAFE_ZIP_NAME" "$FILENAME"
                 rm "$FILENAME"
                 
-                DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/raw/main/Downloads/$ZIP_NAME"
-                echo "| $ZIP_NAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> README.md
+                DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/raw/main/Downloads/$SAFE_ZIP_NAME"
+                echo "| $FILENAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> README.md
               else
                 echo "Keeping original format for $FILENAME."
-                mv "$FILENAME" "Downloads/$FILENAME"
+                SAFE_FILENAME=$(echo "$FILENAME" | sed 's/[^a-zA-Z0-9._-]/_/g')
+                mv "$FILENAME" "Downloads/$SAFE_FILENAME"
                 
-                DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/raw/main/Downloads/$FILENAME"
+                DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/raw/main/Downloads/$SAFE_FILENAME"
                 echo "| $FILENAME | Original | [Download]($DOWNLOAD_LINK) |" >> README.md
               fi
             fi
