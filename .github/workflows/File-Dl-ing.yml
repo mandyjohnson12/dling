@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       file_urls:
-        description: 'Paste URLs separated by SPACES'
+        description: 'Paste URLs (Separated by spaces OR newlines)'
         required: true
         type: string
       compression_choice:
@@ -27,7 +27,7 @@ jobs:
 
       - name: Process Downloads
         env:
-          INPUT_URLS: ${{ github.event.inputs.file_urls }}
+          RAW_URLS: ${{ github.event.inputs.file_urls }}
         run: |
           mkdir -p Downloads
           
@@ -38,11 +38,10 @@ jobs:
             echo "" >> README.md
           fi
 
-          # Capture a single timestamp for this entire download batch
+          # Set up clean batch timestamps
           BATCH_TIMESTAMP=$(date +'%Y-%m-%d %H:%M:%S')
           FOLDER_TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
           
-          # Create a new, separate table header for this specific batch session
           TEMP_README="temp_batch.md"
           echo "### 📥 Download Batch: $BATCH_TIMESTAMP" > "$TEMP_README"
           echo "| File Name / Part | Status | Direct Download Link |" >> "$TEMP_README"
@@ -50,77 +49,84 @@ jobs:
 
           CHOICE="${{ github.event.inputs.compression_choice }}"
 
-          for URL in $INPUT_URLS; do
+          # SANITIZATION ENGINE: Convert spaces to newlines, strip Windows returns, and clean whitespace
+          echo "$RAW_URLS" | tr ' ' '\n' | tr -d '\r' | sed '/^[[:space:]]*$/d' > clean_urls.txt
+
+          # Process every single URL line by line from the clean file system
+          while IFS= read -r URL || [ -n "$URL" ]; do
+            # Secure decoding of the filename
             FILENAME=$(basename "$URL")
             
-            echo "Downloading $FILENAME..."
+            echo "--------------------------------------------------"
+            echo "Processing Link: $URL"
+            echo "Target Filename: $FILENAME"
+            echo "--------------------------------------------------"
+            
+            # Download file using double quotes to defend special characters
             curl -L "$URL" -o "$FILENAME"
             
-            # Get file size in Megabytes
+            # Confirm file exists before sizing
+            if [ ! -f "$FILENAME" ]; then
+              echo "❌ Error: Failed to download $FILENAME"
+              echo "| $FILENAME | ❌ Download Failed | Link Broken / Timeout |" >> "$TEMP_README"
+              continue
+            fi
+
             FILE_SIZE=$(du -m "$FILENAME" | cut -f1)
 
             if [ "$FILE_SIZE" -gt 95 ]; then
-              # LARGE FILE: Create timestamped folder and split
               TARGET_DIR="Downloads/${FOLDER_TIMESTAMP}-${FILENAME}"
               mkdir -p "$TARGET_DIR"
               
-              echo "$FILENAME is $FILE_SIZE MB. Automatically splitting into $TARGET_DIR..."
+              echo "⚠️ File is large ($FILE_SIZE MB). Splitting into parts..."
               7z a -v95m "$TARGET_DIR/${FILENAME}.7z" "$FILENAME"
               rm "$FILENAME"
               
-              # Loop through the folder to find the generated split parts and list them directly
               for PART_PATH in "$TARGET_DIR"/*; do
                 PART_NAME=$(basename "$PART_PATH")
                 DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/$TARGET_DIR/$PART_NAME"
-                
                 echo "| ↳ $PART_NAME | Split Part | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
               done
             
             else
-              # HANDLES SMALL FILES BASED ON USER CHOICE
               if [ "$CHOICE" = "Zip the file" ]; then
                 ZIP_NAME="${FILENAME%.*}.zip"
-                echo "Zipping $FILENAME into $ZIP_NAME..."
-                
+                echo "⚡ Compressing into $ZIP_NAME..."
                 7z a "Downloads/$ZIP_NAME" "$FILENAME"
                 rm "$FILENAME"
                 
                 DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$ZIP_NAME"
                 echo "| $ZIP_NAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
               else
-                echo "Keeping original format for $FILENAME."
+                echo "✅ Keeping original format."
                 mv "$FILENAME" "Downloads/"
                 
                 DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$FILENAME"
                 echo "| $FILENAME | Original | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
               fi
             fi
-          done
+          done < clean_urls.txt
 
-          # Append a spacer line after the table
           echo "" >> "$TEMP_README"
           echo "---" >> "$TEMP_README"
           echo "" >> "$TEMP_README"
 
-          # Insert the new batch table at the TOP of the archive list (below the header text)
-          # This ensures your newest downloads are always at the top of the page.
+          # Fix legacy headers if present
           if grep -q "Below is a list of files managed by this workflow:" README.md; then
-             # Fixes legacy README if present
              sed -i 's/Below is a list of files managed by this workflow:/Below is a history of files managed by this workflow:/g' README.md
           fi
 
-          # Split README into top intro and old content, sandwiching the new table in between
+          # Splice new table immediately into the top slots
           sed -n '1,2p' README.md > top.txt
           sed -n '3,$p' README.md > bottom.txt
           cat top.txt "$TEMP_README" bottom.txt > README.md
           
-          # Clean up temporary construction files
-          rm top.txt bottom.txt "$TEMP_README"
+          rm top.txt bottom.txt "$TEMP_README" clean_urls.txt
 
       - name: Commit and Push Changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add Downloads/ README.md
-          git commit -m "New isolated download batch added to README" || echo "No changes"
+          git commit -m "Batch execution complete: Logged to README" || echo "No changes"
           git push
