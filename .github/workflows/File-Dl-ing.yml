@@ -75,6 +75,7 @@ jobs:
             FILE_SIZE=$(du -m "$FILENAME" | cut -f1)
 
             if [ "$FILE_SIZE" -gt 95 ]; then
+              # LARGE FILE: Kept in its timestamped folder
               TARGET_DIR="Downloads/${FOLDER_TIMESTAMP}-${FILENAME}"
               mkdir -p "$TARGET_DIR"
               
@@ -89,8 +90,14 @@ jobs:
               done
             
             else
+              # SMALL FILE: Appending unique date and clock to the filename
+              FILE_BASE="${FILENAME%.*}"
+              FILE_EXT="${FILENAME##*.}"
+              FILE_CLOCK=$(date +'%Y-%m-%d_%H-%M-%S')
+              
               if [ "$CHOICE" = "Zip the file" ]; then
-                ZIP_NAME="${FILENAME%.*}.zip"
+                # Appends time clock before the .zip extension
+                ZIP_NAME="${FILE_BASE}_${FILE_CLOCK}.zip"
                 echo "⚡ Compressing into $ZIP_NAME..."
                 7z a "Downloads/$ZIP_NAME" "$FILENAME"
                 rm "$FILENAME"
@@ -98,11 +105,13 @@ jobs:
                 DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$ZIP_NAME"
                 echo "| $ZIP_NAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
               else
-                echo "✅ Keeping original format."
-                mv "$FILENAME" "Downloads/"
+                # Appends time clock right before original extension
+                NEW_NAME="${FILE_BASE}_${FILE_CLOCK}.${FILE_EXT}"
+                echo "✅ Keeping original format with timestamp: $NEW_NAME"
+                mv "$FILENAME" "Downloads/$NEW_NAME"
                 
-                DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$FILENAME"
-                echo "| $FILENAME | Original | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
+                DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$NEW_NAME"
+                echo "| $NEW_NAME | Original | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
               fi
             fi
           done < clean_urls.txt
@@ -128,5 +137,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add Downloads/ README.md
-          git commit -m "Batch execution complete: Logged to README" || echo "No changes"
+          git commit -m "Batch execution complete: Timestamped links logged" || echo "No changes"
           git push
