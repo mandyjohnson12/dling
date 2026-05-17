@@ -79,34 +79,33 @@ jobs:
           if [ "$PKG_STYLE" = "Combine all into a single Zip file" ]; then
             echo "📦 Option selected: Combining all files into a single master archive."
             
-            MASTER_NAME="Batch_Package_${FILE_CLOCK}.zip"
+            BUNDLE_BASE="Batch_Package_${FILE_CLOCK}"
+            MASTER_NAME="${BUNDLE_BASE}.zip"
             
-            # Zip everything in the staging area into a single archive file
-            cd staging_area
-            7z a "../$MASTER_NAME" *
-            cd ..
-            
-            # Check size of the final combined bundle
-            TOTAL_SIZE=$(du -m "$MASTER_NAME" | cut -f1)
+            # Calculate the total uncompressed size of all staged files
+            TOTAL_SIZE=$(du -m staging_area | tail -n1 | cut -f1)
             
             if [ "$TOTAL_SIZE" -gt 95 ]; then
-              TARGET_DIR="Downloads/${FOLDER_TIMESTAMP}-${MASTER_NAME%.*}"
+              TARGET_DIR="Downloads/${FOLDER_TIMESTAMP}-${BUNDLE_BASE}"
               mkdir -p "$TARGET_DIR"
               
-              echo "⚠️ Master bundle is large ($TOTAL_SIZE MB). Splitting bundle into parts..."
-              7z a -v95m "$TARGET_DIR/${MASTER_NAME}.7z" "$MASTER_NAME"
-              rm "$MASTER_NAME"
+              echo "⚠️ Total files size is large ($TOTAL_SIZE MB). Compressing directly into split 7z parts..."
+              cd staging_area
+              7z a -v95m "../$TARGET_DIR/${BUNDLE_BASE}.7z" *
+              cd ..
               
               for PART_PATH in "$TARGET_DIR"/*; do
                 PART_NAME=$(basename "$PART_PATH")
-                # CHANGED: Using raw.githubusercontent.com for split parts inside packages
                 DOWNLOAD_LINK="https://raw.githubusercontent.com/${{ github.repository }}/main/$TARGET_DIR/$PART_NAME"
                 echo "| ↳ $PART_NAME | Split Master Bundle Part | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
               done
             else
-              echo "✅ Master bundle is within size limits ($TOTAL_SIZE MB)."
+              echo "✅ Master bundle is within size limits ($TOTAL_SIZE MB). Creating single ZIP..."
+              cd staging_area
+              7z a "../$MASTER_NAME" *
+              cd ..
+              
               mv "$MASTER_NAME" "Downloads/"
-              # CHANGED: Using raw.githubusercontent.com for combined small packages
               DOWNLOAD_LINK="https://raw.githubusercontent.com/${{ github.repository }}/main/Downloads/$MASTER_NAME"
               echo "| $MASTER_NAME | Combined Master Zip | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
             fi
@@ -130,7 +129,6 @@ jobs:
                 
                 for PART_PATH in "$TARGET_DIR"/*; do
                   PART_NAME=$(basename "$PART_PATH")
-                  # CHANGED: Using raw.githubusercontent.com for standalone split parts
                   DOWNLOAD_LINK="https://raw.githubusercontent.com/${{ github.repository }}/main/${TARGET_DIR#../}/$PART_NAME"
                   echo "| ↳ $PART_NAME | Split Part | [Download]($DOWNLOAD_LINK) |" >> "../$TEMP_README"
                 done
@@ -144,7 +142,6 @@ jobs:
                   echo "⚡ Compressing individual file into $ZIP_NAME..."
                   7z a "../Downloads/$ZIP_NAME" "$FILENAME"
                   
-                  # CHANGED: Using raw.githubusercontent.com for small zipped files
                   DOWNLOAD_LINK="https://raw.githubusercontent.com/${{ github.repository }}/main/Downloads/$ZIP_NAME"
                   echo "| $ZIP_NAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> "../$TEMP_README"
                 else
@@ -152,7 +149,6 @@ jobs:
                   echo "✅ Keeping original file format: $NEW_NAME"
                   mv "$FILENAME" "../Downloads/$NEW_NAME"
                   
-                  # CHANGED: Using raw.githubusercontent.com for small raw files
                   DOWNLOAD_LINK="https://raw.githubusercontent.com/${{ github.repository }}/main/Downloads/$NEW_NAME"
                   echo "| $NEW_NAME | Original | [Download]($DOWNLOAD_LINK) |" >> "../$TEMP_README"
                 fi
@@ -184,5 +180,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add Downloads/ README.md
-          git commit -m "Batch execution complete: Links optimized with raw domain" || echo "No changes"
+          git commit -m "Batch execution complete: Large zip logic optimized" || echo "No changes"
           git push
