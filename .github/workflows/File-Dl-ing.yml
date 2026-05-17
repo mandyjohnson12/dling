@@ -1,4 +1,4 @@
-name: Conditional Split, Compress & Package
+name: File Downloading(M-NRZ)
 on:
   workflow_dispatch:
     inputs:
