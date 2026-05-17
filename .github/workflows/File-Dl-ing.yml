@@ -38,34 +38,34 @@ jobs:
           # Initialize README if it doesn't exist
           if [ ! -f README.md ]; then
             echo "# Downloaded Files Archive" > README.md
+            echo "" >> README.md
             echo "| File Name | Status | Download Link |" >> README.md
             echo "| --- | --- | --- |" >> README.md
           fi
-
-          # Convert space-separated URLs to array safely
+          
+          # خواندن URLها به صورت آرایه
           read -ra URL_ARRAY <<< "$URLS"
           
           for URL in "${URL_ARRAY[@]}"; do
-            # Extract filename from URL
+            # استخراج نام فایل از URL
             FILENAME=$(basename "$URL")
             
             echo "Downloading: $FILENAME"
             echo "From: $URL"
             
-            # Download with proper quoting
+            # دانلود فایل
             curl -L -o "$FILENAME" "$URL"
             
-            # Check if download was successful
+            # بررسی موفقیت دانلود
             if [ ! -f "$FILENAME" ]; then
               echo "Failed to download $FILENAME"
-              echo "| $FILENAME | Download Failed | - |" >> README.md
+              echo "| $FILENAME | ❌ Download Failed | - |" >> README.md
               continue
             fi
             
-            # Get file size in Megabytes
+            # گرفتن سایز فایل
             FILE_SIZE=$(du -m "$FILENAME" | cut -f1)
             
-            # If file size is 0 or negative, treat as 1MB
             if [ -z "$FILE_SIZE" ] || [ "$FILE_SIZE" -eq 0 ]; then
               FILE_SIZE=1
             fi
@@ -73,42 +73,48 @@ jobs:
             echo "File size: $FILE_SIZE MB"
 
             if [ "$FILE_SIZE" -gt 95 ]; then
-              # FORCE SPLIT FOR LARGE FILES
+              # اسپلیت برای فایل‌های بزرگ
               TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
               SAFE_FILENAME=$(echo "$FILENAME" | sed 's/[()]//g' | sed 's/[^a-zA-Z0-9._-]/_/g')
               TARGET_DIR="Downloads/$TIMESTAMP-$SAFE_FILENAME"
               mkdir -p "$TARGET_DIR"
               
-              echo "$FILENAME is $FILE_SIZE MB. Automatically splitting into $TARGET_DIR..."
+              echo "$FILENAME is $FILE_SIZE MB. Automatically splitting..."
               7z a -v95m "$TARGET_DIR/${SAFE_FILENAME}.7z" "$FILENAME"
               rm "$FILENAME"
               
-              echo "| $FILENAME | Forced Split (>95MB) | [View Folder](${{ github.server_url }}/${{ github.repository }}/tree/main/$TARGET_DIR) |" >> README.md
+              # لینک پوشه
+              FOLDER_LINK="${{ github.server_url }}/${{ github.repository }}/tree/main/$TARGET_DIR"
+              echo "| $FILENAME | 🔸 Forced Split (>95MB) | [📂 View Folder]($FOLDER_LINK) |" >> README.md
             
             else
-              # HANDLES SMALL FILES BASED ON USER CHOICE
+              # فایل‌های کوچک
               if [ "$CHOICE" = "Zip the file" ]; then
-                SAFE_ZIP_NAME=$(echo "$FILENAME" | sed 's/\.[^.]*$//' | sed 's/[()]//g' | sed 's/[^a-zA-Z0-9._-]/_/g').zip
+                # ساخت نام فایل زیپ شده بدون کاراکترهای خاص
+                BASENAME_NO_EXT=$(echo "$FILENAME" | sed 's/\.[^.]*$//' | sed 's/[()]//g' | sed 's/[^a-zA-Z0-9._-]/_/g')
+                SAFE_ZIP_NAME="${BASENAME_NO_EXT}.zip"
                 echo "Zipping $FILENAME into $SAFE_ZIP_NAME..."
                 
-                # Zip the file using 7z
                 7z a "Downloads/$SAFE_ZIP_NAME" "$FILENAME"
                 rm "$FILENAME"
                 
                 DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/raw/main/Downloads/$SAFE_ZIP_NAME"
-                echo "| $FILENAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> README.md
+                echo "| $FILENAME | 📦 Compressed (Zip) | [🔗 Download]($DOWNLOAD_LINK) |" >> README.md
               else
-                echo "Keeping original format for $FILENAME."
+                # حفظ فرمت اصلی با نام پاک شده
                 SAFE_FILENAME=$(echo "$FILENAME" | sed 's/[()]//g' | sed 's/[^a-zA-Z0-9._-]/_/g')
                 mv "$FILENAME" "Downloads/$SAFE_FILENAME"
                 
                 DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/raw/main/Downloads/$SAFE_FILENAME"
-                echo "| $FILENAME | Original | [Download]($DOWNLOAD_LINK) |" >> README.md
+                echo "| $FILENAME | 📄 Original | [🔗 Download]($DOWNLOAD_LINK) |" >> README.md
               fi
             fi
           done
           
-          echo "Processing complete!"
+          # اضافه کردن توضیحات به انتهای README
+          echo "" >> README.md
+          echo "---" >> README.md
+          echo "*Last updated: $(date)*" >> README.md
 
       - name: Commit and Push Changes
         run: |
