@@ -26,15 +26,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Process Downloads
-        # We pass the input into a safe environment variable here
         env:
           INPUT_URLS: ${{ github.event.inputs.file_urls }}
         run: |
           mkdir -p Downloads
           
-          # Initialize README if it doesn't exist
+          # Initialize README if it doesn't exist with correct 3-column headers
           if [ ! -f README.md ]; then
             echo "# Downloaded Files Archive" > README.md
+            echo "Below is a list of files managed by this workflow:" >> README.md
+            echo "" >> README.md
             echo "| File Name | Status | Download Link |" >> README.md
             echo "| --- | --- | --- |" >> README.md
           fi
@@ -62,6 +63,7 @@ jobs:
               7z a -v95m "$TARGET_DIR/${FILENAME}.7z" "$FILENAME"
               rm "$FILENAME"
               
+              # Perfectly aligned 3-column entry
               echo "| $FILENAME | Forced Split (>95MB) | [View Folder](https://github.com/${{ github.repository }}/tree/main/$TARGET_DIR) |" >> README.md
             
             else
@@ -74,12 +76,14 @@ jobs:
                 rm "$FILENAME"
                 
                 DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$ZIP_NAME"
+                # Perfectly aligned 3-column entry
                 echo "| $ZIP_NAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> README.md
               else
                 echo "Keeping original format for $FILENAME."
                 mv "$FILENAME" "Downloads/"
                 
                 DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$FILENAME"
+                # Perfectly aligned 3-column entry
                 echo "| $FILENAME | Original | [Download]($DOWNLOAD_LINK) |" >> README.md
               fi
             fi
