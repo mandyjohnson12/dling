@@ -99,13 +99,15 @@ jobs:
               
               for PART_PATH in "$TARGET_DIR"/*; do
                 PART_NAME=$(basename "$PART_PATH")
-                DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/$TARGET_DIR/$PART_NAME"
+                # CHANGED: Using raw.githubusercontent.com for split parts inside packages
+                DOWNLOAD_LINK="https://raw.githubusercontent.com/${{ github.repository }}/main/$TARGET_DIR/$PART_NAME"
                 echo "| ↳ $PART_NAME | Split Master Bundle Part | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
               done
             else
               echo "✅ Master bundle is within size limits ($TOTAL_SIZE MB)."
               mv "$MASTER_NAME" "Downloads/"
-              DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$MASTER_NAME"
+              # CHANGED: Using raw.githubusercontent.com for combined small packages
+              DOWNLOAD_LINK="https://raw.githubusercontent.com/${{ github.repository }}/main/Downloads/$MASTER_NAME"
               echo "| $MASTER_NAME | Combined Master Zip | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
             fi
 
@@ -128,7 +130,8 @@ jobs:
                 
                 for PART_PATH in "$TARGET_DIR"/*; do
                   PART_NAME=$(basename "$PART_PATH")
-                  DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/${TARGET_DIR#../}/$PART_NAME"
+                  # CHANGED: Using raw.githubusercontent.com for standalone split parts
+                  DOWNLOAD_LINK="https://raw.githubusercontent.com/${{ github.repository }}/main/${TARGET_DIR#../}/$PART_NAME"
                   echo "| ↳ $PART_NAME | Split Part | [Download]($DOWNLOAD_LINK) |" >> "../$TEMP_README"
                 done
               
@@ -141,14 +144,16 @@ jobs:
                   echo "⚡ Compressing individual file into $ZIP_NAME..."
                   7z a "../Downloads/$ZIP_NAME" "$FILENAME"
                   
-                  DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$ZIP_NAME"
+                  # CHANGED: Using raw.githubusercontent.com for small zipped files
+                  DOWNLOAD_LINK="https://raw.githubusercontent.com/${{ github.repository }}/main/Downloads/$ZIP_NAME"
                   echo "| $ZIP_NAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> "../$TEMP_README"
                 else
                   NEW_NAME="${FILE_BASE}_${FILE_CLOCK}.${FILE_EXT}"
                   echo "✅ Keeping original file format: $NEW_NAME"
                   mv "$FILENAME" "../Downloads/$NEW_NAME"
                   
-                  DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$NEW_NAME"
+                  # CHANGED: Using raw.githubusercontent.com for small raw files
+                  DOWNLOAD_LINK="https://raw.githubusercontent.com/${{ github.repository }}/main/Downloads/$NEW_NAME"
                   echo "| $NEW_NAME | Original | [Download]($DOWNLOAD_LINK) |" >> "../$TEMP_README"
                 fi
               fi
@@ -179,5 +184,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add Downloads/ README.md
-          git commit -m "Batch execution complete: Package management applied" || echo "No changes"
+          git commit -m "Batch execution complete: Links optimized with raw domain" || echo "No changes"
           git push
