@@ -1,91 +1,58 @@
-name: Conditional Split & Compress
-on:
-  workflow_dispatch:
-    inputs:
-      file_urls:
-        description: 'Paste URLs separated by SPACES'
-        required: true
-        type: string
-      compression_choice:
-        description: 'Format for small files (< 95MB)'
-        required: true
-        type: choice
-        options:
-          - 'Keep Original Format'
-          - 'Zip the file'
-        default: 'Keep Original Format'
-
-jobs:
-  download_and_commit:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+- name: Process Downloads
+  run: |
+    mkdir -p Downloads
     
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    # Initialize README if it doesn't exist
+    if [ ! -f README.md ]; then
+      echo "# Downloaded Files Archive" > README.md
+      echo "| File Name | Status | Download Link |" >> README.md
+      echo "| --- | --- | --- |" >> README.md
+    fi
 
-      - name: Process Downloads
-        run: |
-          mkdir -p Downloads
+    CHOICE="${{ github.event.inputs.compression_choice }}"
+
+    # Loop through space-separated URLs
+    for URL in ${{ github.event.inputs.file_urls }}; do
+      FILENAME=$(basename "$URL")
+      
+      echo "Downloading $FILENAME..."
+      curl -L -o "$FILENAME" "$URL"
+      
+      # Get file size in Megabytes
+      FILE_SIZE=$(du -m "$FILENAME" | cut -f1)
+
+      if [ "$FILE_SIZE" -gt 95 ]; then
+        # FORCE SPLIT FOR LARGE FILES
+        TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
+        TARGET_DIR="Downloads/$TIMESTAMP-$FILENAME"
+        mkdir -p "$TARGET_DIR"
+        
+        echo "$FILENAME is $FILE_SIZE MB. Automatically splitting into $TARGET_DIR..."
+        7z a -v95m "$TARGET_DIR/${FILENAME}.7z" "$FILENAME"
+        rm "$FILENAME"
+        
+        echo "| $FILENAME | Forced Split (>95MB) | [View Folder](${{ github.server_url }}/${{ github.repository }}/tree/main/$TARGET_DIR) |" >> README.md
+      
+      else
+        # HANDLES SMALL FILES BASED ON USER CHOICE
+        if [ "$CHOICE" = "Zip the file" ]; then
+          ZIP_NAME="${FILENAME%.*}.zip"
+          echo "Zipping $FILENAME into $ZIP_NAME..."
           
-          # Initialize README if it doesn't exist
-          if [ ! -f README.md ]; then
-            echo "# Downloaded Files Archive" > README.md
-            echo "| File Name | Status | Download Link |" >> README.md
-            echo "| --- | --- | --- |" >> README.md
-          fi
-
-          CHOICE="${{ github.event.inputs.compression_choice }}"
-
-          # Loop through space-separated URLs
-          for URL in ${{ github.event.inputs.file_urls }}; do
-            FILENAME=$(basename "$URL")
-            
-            echo "Downloading $FILENAME..."
-            curl -L "$URL" -o "$FILENAME"
-            
-            # Get file size in Megabytes
-            FILE_SIZE=$(du -m "$FILENAME" | cut -f1)
-
-            if [ "$FILE_SIZE" -gt 95 ]; then
-              # FORCE SPLIT FOR LARGE FILES
-              TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
-              TARGET_DIR="Downloads/$TIMESTAMP-$FILENAME"
-              mkdir -p "$TARGET_DIR"
-              
-              echo "$FILENAME is $FILE_SIZE MB. Automatically splitting into $TARGET_DIR..."
-              7z a -v95m "$TARGET_DIR/${FILENAME}.7z" "$FILENAME"
-              rm "$FILENAME"
-              
-              echo "| $FILENAME | Forced Split (>95MB) | [View Folder](https://github.com/${{ github.repository }}/tree/main/$TARGET_DIR) |" >> README.md
-            
-            else
-              # HANDLES SMALL FILES BASED ON USER CHOICE
-              if [ "$CHOICE" = "Zip the file" ]; then
-                ZIP_NAME="${FILENAME%.*}.zip"
-                echo "Zipping $FILENAME into $ZIP_NAME..."
-                
-                # Zip the file using 7z
-                7z a "Downloads/$ZIP_NAME" "$FILENAME"
-                rm "$FILENAME"
-                
-                DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$ZIP_NAME"
-                echo "| $ZIP_NAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> README.md
-              else
-                echo "Keeping original format for $FILENAME."
-                mv "$FILENAME" "Downloads/"
-                
-                DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$FILENAME"
-                echo "| $FILENAME | Original | [Download]($DOWNLOAD_LINK) |" >> README.md
-              fi
-            fi
-          done
-
-      - name: Commit and Push Changes
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add Downloads/ README.md
-          git commit -m "Downloads processed with user formatting preference" || echo "No changes"
-          git push
+          # Zip the file using 7z
+          7z a "Downloads/$ZIP_NAME" "$FILENAME"
+          rm "$FILENAME"
+          
+          # ✅ اصلاح شده: استفاده از github.server_url
+          DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/raw/main/Downloads/$ZIP_NAME"
+          echo "| $ZIP_NAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> README.md
+        else
+          echo "Keeping original format for $FILENAME."
+          mv "$FILENAME" "Downloads/$FILENAME"
+          
+          # ✅ اصلاح شده: مسیر کامل در لینک
+          DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/raw/main/Downloads/$FILENAME"
+          echo "| $FILENAME | Original | [Download]($DOWNLOAD_LINK) |" >> README.md
+        fi
+      fi
+    done
