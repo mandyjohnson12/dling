@@ -1,4 +1,4 @@
-name: Conditional Split & Compress
+name: Conditional Split, Compress & Package
 on:
   workflow_dispatch:
     inputs:
@@ -7,13 +7,21 @@ on:
         required: true
         type: string
       compression_choice:
-        description: 'Format for small files (< 95MB)'
+        description: 'Format for individual files (< 95MB)'
         required: true
         type: choice
         options:
           - 'Keep Original Format'
           - 'Zip the file'
         default: 'Keep Original Format'
+      package_style:
+        description: 'Packaging Style'
+        required: true
+        type: choice
+        options:
+          - 'Download each file separately'
+          - 'Combine all into a single Zip file'
+        default: 'Download each file separately'
 
 jobs:
   download_and_commit:
@@ -30,6 +38,7 @@ jobs:
           RAW_URLS: ${{ github.event.inputs.file_urls }}
         run: |
           mkdir -p Downloads
+          mkdir -p staging_area
           
           # Initialize README with a title if it doesn't exist
           if [ ! -f README.md ]; then
@@ -41,80 +50,114 @@ jobs:
           # Set up clean batch timestamps
           BATCH_TIMESTAMP=$(date +'%Y-%m-%d %H:%M:%S')
           FOLDER_TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
+          FILE_CLOCK=$(date +'%Y-%m-%d_%H-%M-%S')
           
           TEMP_README="temp_batch.md"
           echo "### 📥 Download Batch: $BATCH_TIMESTAMP" > "$TEMP_README"
           echo "| File Name / Part | Status | Direct Download Link |" >> "$TEMP_README"
           echo "| --- | --- | --- |" >> "$TEMP_README"
 
-          CHOICE="${{ github.event.inputs.compression_choice }}"
+          COMP_CHOICE="${{ github.event.inputs.compression_choice }}"
+          PKG_STYLE="${{ github.event.inputs.package_style }}"
 
           # SANITIZATION ENGINE: Convert spaces to newlines, strip Windows returns, and clean whitespace
           echo "$RAW_URLS" | tr ' ' '\n' | tr -d '\r' | sed '/^[[:space:]]*$/d' > clean_urls.txt
 
-          # Process every single URL line by line from the clean file system
+          # Step 1: Download all files into a temporary staging workspace
           while IFS= read -r URL || [ -n "$URL" ]; do
-            # Secure decoding of the filename
             FILENAME=$(basename "$URL")
+            echo "Downloading $FILENAME..."
+            curl -L "$URL" -o "staging_area/$FILENAME"
             
-            echo "--------------------------------------------------"
-            echo "Processing Link: $URL"
-            echo "Target Filename: $FILENAME"
-            echo "--------------------------------------------------"
-            
-            # Download file using double quotes to defend special characters
-            curl -L "$URL" -o "$FILENAME"
-            
-            # Confirm file exists before sizing
-            if [ ! -f "$FILENAME" ]; then
+            if [ ! -f "staging_area/$FILENAME" ]; then
               echo "❌ Error: Failed to download $FILENAME"
               echo "| $FILENAME | ❌ Download Failed | Link Broken / Timeout |" >> "$TEMP_README"
-              continue
             fi
+          done < clean_urls.txt
 
-            FILE_SIZE=$(du -m "$FILENAME" | cut -f1)
-
-            if [ "$FILE_SIZE" -gt 95 ]; then
-              # LARGE FILE: Kept in its timestamped folder
-              TARGET_DIR="Downloads/${FOLDER_TIMESTAMP}-${FILENAME}"
+          # Step 2: Process files depending on user choice
+          if [ "$PKG_STYLE" = "Combine all into a single Zip file" ]; then
+            echo "📦 Option selected: Combining all files into a single master archive."
+            
+            MASTER_NAME="Batch_Package_${FILE_CLOCK}.zip"
+            
+            # Zip everything in the staging area into a single archive file
+            cd staging_area
+            7z a "../$MASTER_NAME" *
+            cd ..
+            
+            # Check size of the final combined bundle
+            TOTAL_SIZE=$(du -m "$MASTER_NAME" | cut -f1)
+            
+            if [ "$TOTAL_SIZE" -gt 95 ]; then
+              TARGET_DIR="Downloads/${FOLDER_TIMESTAMP}-${MASTER_NAME%.*}"
               mkdir -p "$TARGET_DIR"
               
-              echo "⚠️ File is large ($FILE_SIZE MB). Splitting into parts..."
-              7z a -v95m "$TARGET_DIR/${FILENAME}.7z" "$FILENAME"
-              rm "$FILENAME"
+              echo "⚠️ Master bundle is large ($TOTAL_SIZE MB). Splitting bundle into parts..."
+              7z a -v95m "$TARGET_DIR/${MASTER_NAME}.7z" "$MASTER_NAME"
+              rm "$MASTER_NAME"
               
               for PART_PATH in "$TARGET_DIR"/*; do
                 PART_NAME=$(basename "$PART_PATH")
                 DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/$TARGET_DIR/$PART_NAME"
-                echo "| ↳ $PART_NAME | Split Part | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
+                echo "| ↳ $PART_NAME | Split Master Bundle Part | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
               done
-            
             else
-              # SMALL FILE: Appending unique date and clock to the filename
-              FILE_BASE="${FILENAME%.*}"
-              FILE_EXT="${FILENAME##*.}"
-              FILE_CLOCK=$(date +'%Y-%m-%d_%H-%M-%S')
-              
-              if [ "$CHOICE" = "Zip the file" ]; then
-                # Appends time clock before the .zip extension
-                ZIP_NAME="${FILE_BASE}_${FILE_CLOCK}.zip"
-                echo "⚡ Compressing into $ZIP_NAME..."
-                7z a "Downloads/$ZIP_NAME" "$FILENAME"
-                rm "$FILENAME"
-                
-                DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$ZIP_NAME"
-                echo "| $ZIP_NAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
-              else
-                # Appends time clock right before original extension
-                NEW_NAME="${FILE_BASE}_${FILE_CLOCK}.${FILE_EXT}"
-                echo "✅ Keeping original format with timestamp: $NEW_NAME"
-                mv "$FILENAME" "Downloads/$NEW_NAME"
-                
-                DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$NEW_NAME"
-                echo "| $NEW_NAME | Original | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
-              fi
+              echo "✅ Master bundle is within size limits ($TOTAL_SIZE MB)."
+              mv "$MASTER_NAME" "Downloads/"
+              DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$MASTER_NAME"
+              echo "| $MASTER_NAME | Combined Master Zip | [Download]($DOWNLOAD_LINK) |" >> "$TEMP_README"
             fi
-          done < clean_urls.txt
+
+          else
+            echo "📄 Option selected: Downloading each file separately."
+            
+            cd staging_area
+            for FILENAME in *; do
+              # Guard against empty directories
+              [ -e "$FILENAME" ] || continue
+              
+              FILE_SIZE=$(du -m "$FILENAME" | cut -f1)
+
+              if [ "$FILE_SIZE" -gt 95 ]; then
+                TARGET_DIR="../Downloads/${FOLDER_TIMESTAMP}-${FILENAME}"
+                mkdir -p "$TARGET_DIR"
+                
+                echo "⚠️ File is large ($FILE_SIZE MB). Splitting into parts..."
+                7z a -v95m "$TARGET_DIR/${FILENAME}.7z" "$FILENAME"
+                
+                for PART_PATH in "$TARGET_DIR"/*; do
+                  PART_NAME=$(basename "$PART_PATH")
+                  DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/${TARGET_DIR#../}/$PART_NAME"
+                  echo "| ↳ $PART_NAME | Split Part | [Download]($DOWNLOAD_LINK) |" >> "../$TEMP_README"
+                done
+              
+              else
+                FILE_BASE="${FILENAME%.*}"
+                FILE_EXT="${FILENAME##*.}"
+                
+                if [ "$COMP_CHOICE" = "Zip the file" ]; then
+                  ZIP_NAME="${FILE_BASE}_${FILE_CLOCK}.zip"
+                  echo "⚡ Compressing individual file into $ZIP_NAME..."
+                  7z a "../Downloads/$ZIP_NAME" "$FILENAME"
+                  
+                  DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$ZIP_NAME"
+                  echo "| $ZIP_NAME | Compressed (Zip) | [Download]($DOWNLOAD_LINK) |" >> "../$TEMP_README"
+                else
+                  NEW_NAME="${FILE_BASE}_${FILE_CLOCK}.${FILE_EXT}"
+                  echo "✅ Keeping original file format: $NEW_NAME"
+                  mv "$FILENAME" "../Downloads/$NEW_NAME"
+                  
+                  DOWNLOAD_LINK="https://github.com/${{ github.repository }}/raw/main/Downloads/$NEW_NAME"
+                  echo "| $NEW_NAME | Original | [Download]($DOWNLOAD_LINK) |" >> "../$TEMP_README"
+                fi
+              fi
+            done
+            cd ..
+          fi
+
+          # Clean up workspace
+          rm -rf staging_area clean_urls.txt
 
           echo "" >> "$TEMP_README"
           echo "---" >> "$TEMP_README"
@@ -125,17 +168,16 @@ jobs:
              sed -i 's/Below is a list of files managed by this workflow:/Below is a history of files managed by this workflow:/g' README.md
           fi
 
-          # Splice new table immediately into the top slots
+          # Splice new table into README
           sed -n '1,2p' README.md > top.txt
           sed -n '3,$p' README.md > bottom.txt
           cat top.txt "$TEMP_README" bottom.txt > README.md
-          
-          rm top.txt bottom.txt "$TEMP_README" clean_urls.txt
+          rm top.txt bottom.txt "$TEMP_README"
 
       - name: Commit and Push Changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add Downloads/ README.md
-          git commit -m "Batch execution complete: Timestamped links logged" || echo "No changes"
+          git commit -m "Batch execution complete: Package management applied" || echo "No changes"
           git push
