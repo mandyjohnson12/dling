@@ -1,0 +1,88 @@
+name: Clean Up Old Releases (M-NRZ)
+on:
+  workflow_dispatch:
+    inputs:
+      clean_mode:
+        description: 'Cleanup Strategy'
+        required: true
+        type: choice
+        options:
+          - 'Keep a specific number of latest releases'
+          - 'Delete EVERY release in the repository'
+        default: 'Keep a specific number of latest releases'
+      keep_count:
+        description: 'How many of the latest releases to KEEP? (Ignored if Delete All is chosen)'
+        required: true
+        type: string
+        default: '3'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup_releases:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Execute Cleanup Engine
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLEAN_MODE: ${{ github.event.inputs.clean_mode }}
+          KEEP_COUNT: ${{ github.event.inputs.keep_count }}
+        run: |
+          echo "🔍 Fetching release roster from repository..."
+          
+          # Fetch the full list of tab-separated release tags (up to 500 records)
+          # The third column (-f3) is the uniquely generated tag name
+          gh release list --limit 500 | cut -f3 > all_tags.txt
+          
+          TOTAL_RELEASES=$(wc -l < all_tags.txt)
+          echo "📊 Detected $TOTAL_RELEASES total active releases."
+
+          if [ "$TOTAL_RELEASES" -eq 0 ]; then
+            echo "✅ No releases found. Nothing to clean up!"
+            exit 0
+          fi
+
+          if [ "$CLEAN_MODE" = "Delete EVERY release in the repository" ]; then
+            echo "⚠️ CRITICAL MODE: Deleting all $TOTAL_RELEASES releases..."
+            cat all_tags.txt > targets.txt
+          else
+            # Ensure input is a valid positive integer
+            if ! [[ "$KEEP_COUNT" =~ ^[0-9]+$ ]]; then
+              echo "❌ Error: Keep count must be a numeric integer value."
+              exit 1
+            fi
+            
+            echo "🧹 Retention Mode: Keeping the latest $KEEP_COUNT releases..."
+            
+            # Use 'tail' to skip the first X records (newest) and grab the old ones
+            tail -n +$((KEEP_COUNT + 1)) all_tags.txt > targets.txt
+          fi
+
+          TARGET_COUNT=$(wc -l < targets.txt)
+          
+          if [ "$TARGET_COUNT" -le 0 ]; then
+            echo "✅ All current releases fall within your safety retention threshold. No deletions needed."
+            exit 0
+          fi
+
+          echo "🗑️ Starting purge of $TARGET_COUNT old release assets..."
+          echo "----------------------------------------------------"
+
+          while IFS= read -r TAG || [ -n "$TAG" ]; do
+            echo "🧹 Removing release and burning tag: $TAG"
+            
+            # The --cleanup-tag flag is critical: it deletes both the visual release panel
+            # AND the underlying Git tracking tag so the repository remains pristine.
+            gh release delete "$TAG" --cleanup-tag --yes
+          done < targets.txt
+
+          echo "----------------------------------------------------"
+          echo "🚀 Cleanup sequence complete! Your release page has been optimized."
+          
+          # Housekeeping
+          rm -f all_tags.txt targets.txt
