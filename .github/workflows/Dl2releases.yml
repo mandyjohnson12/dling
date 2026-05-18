@@ -1,0 +1,57 @@
+name: File Downloader to GitHub Releases (M-NRZ)
+on:
+  workflow_dispatch:
+    inputs:
+      file_urls:
+        description: 'Paste URLs (Separated by spaces OR newlines)'
+        required: true
+        type: string
+
+# CRITICAL: Gives the action permission to generate a release and upload assets
+permissions:
+  contents: write
+
+jobs:
+  download_and_release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Process Downloads and Create Release
+        env:
+          RAW_URLS: ${{ github.event.inputs.file_urls }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p downloads_folder
+          
+          # SANITIZATION ENGINE: Clean spaces, newlines, and carriage returns
+          echo "$RAW_URLS" | tr ' ' '\n' | tr -d '\r' | sed '/^[[:space:]]*$/d' > clean_urls.txt
+
+          # Step 1: Download files to runner
+          while IFS= read -r URL || [ -n "$URL" ]; do
+            FILENAME=$(basename "$URL")
+            echo "📥 Downloading $FILENAME..."
+            curl -L "$URL" -o "downloads_folder/$FILENAME"
+          done < clean_urls.txt
+
+          # Check if any files were actually downloaded
+          if [ -z "$(ls -A downloads_folder)" ]; then
+            echo "❌ Error: No files were downloaded. Check your URLs."
+            exit 1
+          fi
+
+          # Step 2: Generate a unique tag name using the current timestamp
+          # Example output format: v2026.05.18-224500
+          TAG_NAME="v$(date +'%Y.%m.%d-%H%M%S')"
+          echo "🏷️ Generated unique release tag: $TAG_NAME"
+
+          # Step 3: Create the GitHub Release and upload all assets at once
+          echo "📦 Packaging and deploying assets to GitHub Releases..."
+          gh release create "$TAG_NAME" \
+            downloads_folder/* \
+            --title "Files Archive ($TAG_NAME)" \
+            --notes "Automated download bundle execution complete via M-NRZ Downloader Engine."
+
+          echo "✅ Release sequence complete! Check the Releases tab in your repository."
